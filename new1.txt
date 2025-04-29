@@ -1,0 +1,25 @@
+@Component
+@RequiredArgsConstructor
+public class SalesSignalDataFetchAdapter {
+
+    private final SalesignalDataFetch salesignalDataFetch;
+
+    public Object salesSignalData() {
+        return salesignalDataFetch.fetchSalesSignalData();
+    }
+}
+
+
+
+@RestController
+@RequestMapping("/api")
+@RequiredArgsConstructor
+public class SalesSignalController {
+
+    private final SalesSignalDataFetchAdapter salesSignalDataFetchAdapter;
+
+    @GetMapping("/salessignal")
+    public Object fetchSalesSignalData() {
+        return salesSignalDataFetchAdapter.salesSignalData();
+    }
+}

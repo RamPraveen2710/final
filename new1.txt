@@ -1,4 +1,12 @@
--Dtokenservice.oidctokenurl=https://auth-oidc-dev.ms.com/as/token.oauth2
--Dtokenservice.scvnamespace=TIR/ESP/PINGFEDERATE-OIDC/OPS-DEV
--Dtokenservice.scvclientidkey=oidc/ops-dev/uid:zinteraction: interactionBffDev/client_id
--Dtokenservice.scvcredkey=oidc/ops-dev/uid:zinteraction: interactionBffDev/credentials
+@Bean
+public TokenService tokenService(SCVRepository scvRepository) throws Exception {
+    return new TokenService(
+        oidcRepository(),
+        scvRepository,
+        System.getProperty("tokenservice.oidctokenurl"),
+        System.getProperty("tokenservice.scvnamespace"),
+        System.getProperty("tokenservice.scvclientidkey"),
+        System.getProperty("tokenservice.scvcredkey"),
+        3600L
+    );
+}

@@ -1,42 +1,4 @@
-public TokenService(
-            OIDCRepository oidcRepository,
-            SCVRepository scvRepository,
-            String oidcTokenUrl,
-            String scvNamespace,
-            String scvClientIdKey,
-            String scvCredKey,
-            long oidcTokenExpiryInSecond
-    ) throws Exception {
-
-        this.oidcRepository = oidcRepository;
-        this.scvRepository = scvRepository;
-        this.oidcTokenUrl = oidcTokenUrl;
-        this.oidcTokenExpiryInSecond = oidcTokenExpiryInSecond;
-
-        ObjectMapper objectMapper = new ObjectMapper();
-
-        // Get clientId and private key from SCV
-        this.clientId = scvRepository.tellKey(scvNamespace, scvClientIdKey, null).getData();
-
-        String privateKeyJson = scvRepository.tellKey(scvNamespace, scvCredKey, null).getData();
-        Data privateKeyData = objectMapper.readValue(privateKeyJson, Data.class);
-
-        this.privateKey = getRsaKey(privateKeyData.getPrivateKey());
-    }
-
-
-
-
-
-@Bean
-public TokenService tokenService(SCVRepository scvRepository) throws Exception {
-    return new TokenService(
-            oidcRepository(),
-            scvRepository,
-            System.getProperty("tokenservice.oidctokenurl"),
-            System.getProperty("tokenservice.scvnamespace"),
-            System.getProperty("tokenservice.scvclientidkey"),
-            System.getProperty("tokenservice.scvcredkey"),
-            3600L
-    );
-}
+-Dtokenservice.oidctokenurl=https://auth-oidc-dev.ms.com/as/token.oauth2
+-Dtokenservice.scvnamespace=TIR/ESP/PINGFEDERATE-OIDC/OPS-DEV
+-Dtokenservice.scvclientidkey=oidc/ops-dev/uid:zinteraction: interactionBffDev/client_id
+-Dtokenservice.scvcredkey=oidc/ops-dev/uid:zinteraction: interactionBffDev/credentials

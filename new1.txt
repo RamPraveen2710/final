@@ -1,25 +1,42 @@
-@Component
-@RequiredArgsConstructor
-public class SalesSignalDataFetchAdapter {
+public TokenService(
+            OIDCRepository oidcRepository,
+            SCVRepository scvRepository,
+            String oidcTokenUrl,
+            String scvNamespace,
+            String scvClientIdKey,
+            String scvCredKey,
+            long oidcTokenExpiryInSecond
+    ) throws Exception {
 
-    private final SalesignalDataFetch salesignalDataFetch;
+        this.oidcRepository = oidcRepository;
+        this.scvRepository = scvRepository;
+        this.oidcTokenUrl = oidcTokenUrl;
+        this.oidcTokenExpiryInSecond = oidcTokenExpiryInSecond;
 
-    public Object salesSignalData() {
-        return salesignalDataFetch.fetchSalesSignalData();
+        ObjectMapper objectMapper = new ObjectMapper();
+
+        // Get clientId and private key from SCV
+        this.clientId = scvRepository.tellKey(scvNamespace, scvClientIdKey, null).getData();
+
+        String privateKeyJson = scvRepository.tellKey(scvNamespace, scvCredKey, null).getData();
+        Data privateKeyData = objectMapper.readValue(privateKeyJson, Data.class);
+
+        this.privateKey = getRsaKey(privateKeyData.getPrivateKey());
     }
-}
 
 
 
-@RestController
-@RequestMapping("/api")
-@RequiredArgsConstructor
-public class SalesSignalController {
 
-    private final SalesSignalDataFetchAdapter salesSignalDataFetchAdapter;
 
-    @GetMapping("/salessignal")
-    public Object fetchSalesSignalData() {
-        return salesSignalDataFetchAdapter.salesSignalData();
-    }
+@Bean
+public TokenService tokenService(SCVRepository scvRepository) throws Exception {
+    return new TokenService(
+            oidcRepository(),
+            scvRepository,
+            System.getProperty("tokenservice.oidctokenurl"),
+            System.getProperty("tokenservice.scvnamespace"),
+            System.getProperty("tokenservice.scvclientidkey"),
+            System.getProperty("tokenservice.scvcredkey"),
+            3600L
+    );
 }

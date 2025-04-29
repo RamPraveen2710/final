@@ -1,12 +1,11 @@
-@Bean
-public TokenService tokenService(SCVRepository scvRepository) throws Exception {
-    return new TokenService(
-        oidcRepository(),
-        scvRepository,
-        System.getProperty("tokenservice.oidctokenurl"),
-        System.getProperty("tokenservice.scvnamespace"),
-        System.getProperty("tokenservice.scvclientidkey"),
-        System.getProperty("tokenservice.scvcredkey"),
-        3600L
-    );
+@Override
+public void initialize(BootstrapRegistry registry) {
+    registry.register(RestTemplate.class, BootstrapContext context -> {
+        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
+        try {
+            return new CustomRestTemplate(requestFactory, tokenService(scvRepository(SCVKerberosToken())));
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to initialize CustomRestTemplate", e);
+        }
+    });
 }

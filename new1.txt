@@ -1,19 +1,13 @@
 package com.ms.crm.client360.bff.repository.configurations;
 
-import org.apache.hc.client5.http.auth.StandardAuthScheme;
-import org.apache.hc.client5.http.impl.auth.SPNegoAuthSchemeFactory;
-import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
-import org.apache.hc.client5.http.impl.classic.HttpClients;
-import org.apache.hc.client5.http.cookie.BasicCookieStore;
+import msjava.kerberos.auth.MSKerberosAuthenticationException;
+import msjava.kerberos.auth.MSKerberosAuthenticator;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.web.reactive.function.client.WebClient;
-import reactor.netty.http.client.HttpClient;
-import org.springframework.http.client.reactive.ReactorClientHttpConnector;
-import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
 
 import java.net.URL;
 
@@ -24,27 +18,21 @@ public class MSConnectAutoConfiguration {
     private URL url;
 
     @Bean
-    public WebClient msConnectWebClient() throws Exception {
+    public WebClient msConnectWebClient() throws MSKerberosAuthenticationException {
+        MSKerberosAuthenticator msKerberosAuthenticator = new MSKerberosAuthenticator(false);
 
-        BasicCookieStore cookieStore = new BasicCookieStore();
-
-        CloseableHttpClient httpClient = HttpClients.custom()
-                .setDefaultAuthSchemeRegistry(registry -> {
-                    registry.register(StandardAuthScheme.SPNEGO, new SPNegoAuthSchemeFactory(true));
-                })
-                .setDefaultCookieStore(cookieStore)
-                .build();
-
-        HttpClient reactorHttpClient = HttpClient.from(HttpAsyncClients.createDefault());
+        // Generate Negotiate Kerberos token
+        String kerberosToken = "Negotiate " + msKerberosAuthenticator.getAuthToken("HTTP@" + url.getHost(), null);
 
         return WebClient.builder()
-                .clientConnector(new ReactorClientHttpConnector(reactorHttpClient))
                 .baseUrl(url.toString())
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader(HttpHeaders.AUTHORIZATION, kerberosToken)  // 👈 Attaching Authorization header
                 .build();
     }
 }
+
 
 
 
@@ -78,38 +66,3 @@ public class MSConnectController {
 
 
 
-
-
-package com.ms.crm.client360.bff.repository.dto;
-
-import lombok.Data;
-import java.util.List;
-
-@Data
-public class Payload {
-    private String id;
-    private String type;
-    private List<Object> filters;
-    private boolean isPastConnection;
-}
-
-
-<!-- HttpClient 5 for SPNEGO/Kerberos Authentication -->
-<dependency>
-    <groupId>org.apache.httpcomponents.client5</groupId>
-    <artifactId>httpclient5</artifactId>
-    <version>5.1.3</version> <!-- Use the latest if possible -->
-</dependency>
-
-<!-- Spring WebFlux for WebClient -->
-<dependency>
-    <groupId>org.springframework.boot</groupId>
-    <artifactId>spring-boot-starter-webflux</artifactId>
-</dependency>
-
-<!-- Lombok for @Data and @RequiredArgsConstructor -->
-<dependency>
-    <groupId>org.projectlombok</groupId>
-    <artifactId>lombok</artifactId>
-    <optional>true</optional>
-</dependency>

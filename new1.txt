@@ -1,11 +1,115 @@
-@Override
-public void initialize(BootstrapRegistry registry) {
-    registry.register(RestTemplate.class, BootstrapContext context -> {
-        SimpleClientHttpRequestFactory requestFactory = new SimpleClientHttpRequestFactory();
-        try {
-            return new CustomRestTemplate(requestFactory, tokenService(scvRepository(SCVKerberosToken())));
-        } catch (Exception e) {
-            throw new RuntimeException("Failed to initialize CustomRestTemplate", e);
-        }
-    });
+package com.ms.crm.client360.bff.repository.configurations;
+
+import org.apache.hc.client5.http.auth.StandardAuthScheme;
+import org.apache.hc.client5.http.impl.auth.SPNegoAuthSchemeFactory;
+import org.apache.hc.client5.http.impl.classic.CloseableHttpClient;
+import org.apache.hc.client5.http.impl.classic.HttpClients;
+import org.apache.hc.client5.http.cookie.BasicCookieStore;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.http.HttpHeaders;
+import org.springframework.http.MediaType;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.netty.http.client.HttpClient;
+import org.springframework.http.client.reactive.ReactorClientHttpConnector;
+import org.apache.hc.client5.http.impl.async.HttpAsyncClients;
+
+import java.net.URL;
+
+@Configuration
+public class MSConnectAutoConfiguration {
+
+    @Value("${msconnect.url}")
+    private URL url;
+
+    @Bean
+    public WebClient msConnectWebClient() throws Exception {
+
+        BasicCookieStore cookieStore = new BasicCookieStore();
+
+        CloseableHttpClient httpClient = HttpClients.custom()
+                .setDefaultAuthSchemeRegistry(registry -> {
+                    registry.register(StandardAuthScheme.SPNEGO, new SPNegoAuthSchemeFactory(true));
+                })
+                .setDefaultCookieStore(cookieStore)
+                .build();
+
+        HttpClient reactorHttpClient = HttpClient.from(HttpAsyncClients.createDefault());
+
+        return WebClient.builder()
+                .clientConnector(new ReactorClientHttpConnector(reactorHttpClient))
+                .baseUrl(url.toString())
+                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
+                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
+                .build();
+    }
 }
+
+
+
+
+package com.ms.crm.client360.bff.repository.controller;
+
+import com.ms.crm.client360.bff.repository.dto.Payload;
+import lombok.RequiredArgsConstructor;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.*;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
+
+@RestController
+@RequestMapping("/msconnect")
+@RequiredArgsConstructor
+public class MSConnectController {
+
+    private final WebClient msConnectWebClient;
+
+    @PostMapping(value = "/call", consumes = "application/json", produces = "application/json")
+    public Mono<ResponseEntity<String>> callMSConnectAPI(@RequestBody Payload payload) {
+        return msConnectWebClient.post()
+                .bodyValue(payload)
+                .retrieve()
+                .bodyToMono(String.class)
+                .map(ResponseEntity::ok)
+                .onErrorResume(e -> Mono.just(ResponseEntity.status(500).body("Error: " + e.getMessage())));
+    }
+}
+
+
+
+
+
+package com.ms.crm.client360.bff.repository.dto;
+
+import lombok.Data;
+import java.util.List;
+
+@Data
+public class Payload {
+    private String id;
+    private String type;
+    private List<Object> filters;
+    private boolean isPastConnection;
+}
+
+
+<!-- HttpClient 5 for SPNEGO/Kerberos Authentication -->
+<dependency>
+    <groupId>org.apache.httpcomponents.client5</groupId>
+    <artifactId>httpclient5</artifactId>
+    <version>5.1.3</version> <!-- Use the latest if possible -->
+</dependency>
+
+<!-- Spring WebFlux for WebClient -->
+<dependency>
+    <groupId>org.springframework.boot</groupId>
+    <artifactId>spring-boot-starter-webflux</artifactId>
+</dependency>
+
+<!-- Lombok for @Data and @RequiredArgsConstructor -->
+<dependency>
+    <groupId>org.projectlombok</groupId>
+    <artifactId>lombok</artifactId>
+    <optional>true</optional>
+</dependency>

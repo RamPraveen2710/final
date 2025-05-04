@@ -18,20 +18,20 @@ public class MSConnectAutoConfiguration {
     private URL url;
 
     @Bean
-    public WebClient msConnectWebClient() throws MSKerberosAuthenticationException {
+    public WebClient msConnectWebClient(WebClient.Builder builder) throws MSKerberosAuthenticationException {
         MSKerberosAuthenticator msKerberosAuthenticator = new MSKerberosAuthenticator(false);
-
-        // Generate Negotiate Kerberos token
-        String kerberosToken = "Negotiate " + msKerberosAuthenticator.getAuthToken("HTTP@" + url.getHost(), null);
-
-        return WebClient.builder()
-                .baseUrl(url.toString())
+        
+        // Generate SPNEGO token
+        String token = "Negotiate " + msKerberosAuthenticator.getAuthToken("HTTP@" + url.getHost(), null);
+        
+        return builder.baseUrl(url.toString())
                 .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
                 .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader(HttpHeaders.AUTHORIZATION, kerberosToken)  // 👈 Attaching Authorization header
+                .defaultHeader(HttpHeaders.AUTHORIZATION, token) // 👈 Main Important Line
                 .build();
     }
 }
+
 
 
 
@@ -66,3 +66,16 @@ public class MSConnectController {
 
 
 
+
+package com.ms.crm.client360.bff.repository.dto;
+
+import lombok.Data;
+import java.util.List;
+
+@Data
+public class Payload {
+    private String id;
+    private String type;
+    private List<Object> filters;
+    private boolean isPastConnection;
+}

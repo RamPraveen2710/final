@@ -1,34 +1,89 @@
-package com.ms.crm.client360.bff.repository.configurations;
+package com.ms.crm.client360.msconnect.config;
 
-import msjava.kerberos.auth.MSKerberosAuthenticationException;
-import msjava.kerberos.auth.MSKerberosAuthenticator;
-import org.springframework.beans.factory.annotation.Value;
-import org.springframework.context.annotation.Bean;
-import org.springframework.context.annotation.Configuration;
-import org.springframework.http.HttpHeaders;
-import org.springframework.http.MediaType;
-import org.springframework.web.reactive.function.client.WebClient;
+import lombok.AccessLevel;
+import lombok.NoArgsConstructor;
+import org.apache.hc.client5.http.auth.AuthScope;
+import org.apache.hc.client5.http.auth.Credentials;
+import org.apache.hc.client5.http.auth.StandardAuthScheme;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.classic.HttpClients;
+import org.apache.hc.client5.http.config.RequestConfig;
+import org.apache.hc.client5.http.impl.auth.BasicCredentialsProvider;
+import org.apache.hc.client5.http.impl.auth.SPNegoAuthSchemeFactory;
+import org.apache.hc.client5.http.impl.auth.DefaultAuthSchemeRegistry;
+import org.apache.hc.client5.http.impl.classic.HttpClientBuilder;
+import org.apache.hc.client5.http.ssl.DefaultHostnameVerifier;
+import org.apache.hc.client5.http.ssl.TrustSelfSignedStrategy;
+import org.apache.hc.core5.ssl.SSLContextBuilder;
 
-import java.net.URL;
+import java.util.Collections;
+import java.util.function.Consumer;
 
-@Configuration
-public class MSConnectAutoConfiguration {
+@NoArgsConstructor(access = AccessLevel.PRIVATE)
+public class HttpClientProvider {
 
-    @Value("${msconnect.url}")
-    private URL url;
+    public static HttpClient createHttpClient(
+            Consumer<RequestConfig.Builder> requestConfigBuilderConsumer,
+            Consumer<HttpClientBuilder> httpClientBuilderConsumer) throws Exception {
 
-    @Bean
-    public WebClient msConnectWebClient(WebClient.Builder builder) throws MSKerberosAuthenticationException {
-        MSKerberosAuthenticator msKerberosAuthenticator = new MSKerberosAuthenticator(false);
-        
-        // Generate SPNEGO token
-        String token = "Negotiate " + msKerberosAuthenticator.getAuthToken("HTTP@" + url.getHost(), null);
-        
-        return builder.baseUrl(url.toString())
-                .defaultHeader(HttpHeaders.CONTENT_TYPE, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader(HttpHeaders.ACCEPT, MediaType.APPLICATION_JSON_VALUE)
-                .defaultHeader(HttpHeaders.AUTHORIZATION, token) // 👈 Main Important Line
-                .build();
+        Credentials credentials = new Credentials() {
+            @Override
+            public String getPassword() { return null; }
+
+            @Override
+            public java.security.Principal getUserPrincipal() { return null; }
+        };
+
+        BasicCredentialsProvider credentialsProvider = new BasicCredentialsProvider();
+        credentialsProvider.setCredentials(new AuthScope(null, -1), credentials);
+
+        RequestConfig.Builder requestConfigBuilder = RequestConfig.custom()
+                .setAuthenticationEnabled(true)
+                .setTargetPreferredAuthSchemes(Collections.singletonList(StandardAuthScheme.SPNEGO));
+
+        if (requestConfigBuilderConsumer != null) {
+            requestConfigBuilderConsumer.accept(requestConfigBuilder);
+        }
+
+        HttpClientBuilder httpClientBuilder = HttpClients.custom()
+                .setDefaultCredentialsProvider(credentialsProvider)
+                .setDefaultRequestConfig(requestConfigBuilder.build())
+                .setDefaultAuthSchemeRegistry(DefaultAuthSchemeRegistry.INSTANCE);
+
+        if (httpClientBuilderConsumer != null) {
+            httpClientBuilderConsumer.accept(httpClientBuilder);
+        }
+
+        return httpClientBuilder.build();
+    }
+}
+
+
+
+
+package com.ms.crm.client360.msconnect.config;
+
+import lombok.RequiredArgsConstructor;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.springframework.http.client.HttpComponentsClientHttpRequestFactory;
+import org.springframework.web.client.RestTemplate;
+
+@RequiredArgsConstructor
+public class RestTemplateProvider {
+
+    private final HttpClient httpClient;
+
+    public RestTemplate createRestTemplate() {
+        RestTemplate restTemplate = new RestTemplate();
+        HttpComponentsClientHttpRequestFactory factory = new HttpComponentsClientHttpRequestFactory(httpClient);
+
+        factory.setConnectTimeout(20_000);
+        factory.setConnectionRequestTimeout(20_000);
+        factory.setReadTimeout(60_000);
+
+        restTemplate.setRequestFactory(factory);
+
+        return restTemplate;
     }
 }
 
@@ -36,46 +91,68 @@ public class MSConnectAutoConfiguration {
 
 
 
+package com.ms.crm.client360.msconnect.controller;
 
-package com.ms.crm.client360.bff.repository.controller;
-
-import com.ms.crm.client360.bff.repository.dto.Payload;
 import lombok.RequiredArgsConstructor;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
-import org.springframework.web.reactive.function.client.WebClient;
-import reactor.core.publisher.Mono;
+import org.springframework.web.client.RestTemplate;
 
 @RestController
 @RequestMapping("/msconnect")
 @RequiredArgsConstructor
 public class MSConnectController {
 
-    private final WebClient msConnectWebClient;
+    @Qualifier("msConnectRestTemplate")
+    private final RestTemplate msConnectRestTemplate;
 
-    @PostMapping(value = "/call", consumes = "application/json", produces = "application/json")
-    public Mono<ResponseEntity<String>> callMSConnectAPI(@RequestBody Payload payload) {
-        return msConnectWebClient.post()
-                .bodyValue(payload)
-                .retrieve()
-                .bodyToMono(String.class)
-                .map(ResponseEntity::ok)
-                .onErrorResume(e -> Mono.just(ResponseEntity.status(500).body("Error: " + e.getMessage())));
+    private final String msConnectApiUrl = "http://crmmsconnect.webfarm-qa.ms.com/ibd/svcsconnect/webapp/services/desktopConnect_v1/desktop/filter?ibdmeta.appgrn=grn:/ms/ideas/crm/crm_apps/msconnect";
+
+    @PostMapping("/call")
+    public ResponseEntity<String> callMsConnect(@RequestBody Payload payload) {
+        try {
+            ResponseEntity<String> response = msConnectRestTemplate.postForEntity(msConnectApiUrl, payload, String.class);
+            return ResponseEntity.ok(response.getBody());
+        } catch (Exception e) {
+            return ResponseEntity.status(500).body("Error calling MSConnect: " + e.getMessage());
+        }
     }
 }
 
 
 
 
-package com.ms.crm.client360.bff.repository.dto;
 
-import lombok.Data;
-import java.util.List;
+package com.ms.crm.client360.msconnect.config;
 
-@Data
-public class Payload {
-    private String id;
-    private String type;
-    private List<Object> filters;
-    private boolean isPastConnection;
+import org.apache.hc.client5.http.classic.HttpClient;
+import org.apache.hc.client5.http.impl.client.HttpClients;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+import org.springframework.web.client.RestTemplate;
+
+@Configuration
+public class MSConnectConfiguration {
+
+    // Creating and injecting the HttpClient with SPNEGO authentication
+    @Bean
+    public HttpClient msConnectHttpClient() throws Exception {
+        return HttpClientProvider.createHttpClient(builder -> {}, builder -> {});
+    }
+
+    // Creating and injecting the RestTemplate with the above HttpClient
+    @Bean(name = "msConnectRestTemplate")
+    public RestTemplate msConnectRestTemplate(HttpClient msConnectHttpClient) {
+        return new RestTemplateProvider(msConnectHttpClient).createRestTemplate();
+    }
+
+    // You can add WebClient if required (using the same HttpClient)
+    // @Bean
+    // public WebClient msConnectWebClient() {
+    //    return WebClient.builder()
+    //            .clientConnector(new ReactorClientHttpConnector(HttpClient.create().baseUrl("your-base-url").build()))
+    //            .build();
+    // }
 }
+
